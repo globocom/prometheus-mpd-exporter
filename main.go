@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/globocom/prometheus-mpd-exporter/watcher"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -34,7 +35,20 @@ func main() {
 		w.Write([]byte("Visit https://github.com/globocom/prometheus-mpd-exporter to learn more\n"))
 	})
 
-	mux.Handle("/metrics", promhttp.Handler())
+	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		h := promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{})
+		h.ServeHTTP(w, r)
+
+		for _, metric := range watcher.LastPeriodMetrics {
+			pm, found := metric.Load().(*watcher.PeriodMetrics)
+			if !found {
+				continue
+			}
+
+			h := promhttp.HandlerFor(pm.Registry, promhttp.HandlerOpts{})
+			h.ServeHTTP(w, r)
+		}
+	})
 
 	port := viper.GetString("port")
 	log.Printf("Starting Prometheus MPD Exporter on port %s", port)

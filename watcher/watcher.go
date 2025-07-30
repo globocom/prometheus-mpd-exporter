@@ -4,13 +4,18 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/zencoder/go-dash/v3/mpd"
 )
 
+var LastPeriodMetrics = map[string]*atomic.Value{}
+
 func Init(mpdAlias, url string) {
+	LastPeriodMetrics[mpdAlias] = &atomic.Value{}
+
 	mpdInfo.WithLabelValues(mpdAlias, url).Set(1) // Set the MPD info gauge to 1
 
 	go func() {
@@ -88,35 +93,13 @@ func collectMPDMetrics(mpegMPD *mpd.MPD, mpdAlias string) error {
 		mpdLastPeriod.WithLabelValues(mpdAlias).Set(0)
 	}
 
+	pm := NewPeriodMetrics()
+
 	for _, period := range mpegMPD.Periods {
-		collectPeriodMetrics(period, mpdAlias)
+		collectPeriodMetrics(pm, period, mpdAlias)
 	}
+
+	LastPeriodMetrics[mpdAlias].Store(pm)
 
 	return nil
-}
-
-func collectPeriodMetrics(period *mpd.Period, mpdAlias string) {
-	if period.Start == nil {
-		mpdPeriodStart.WithLabelValues(mpdAlias, period.ID).Set(0)
-	} else {
-		startDuration := time.Duration(*period.Start)
-		mpdPeriodStart.WithLabelValues(mpdAlias, period.ID).Set(startDuration.Seconds())
-	}
-
-	for _, baseURL := range period.BaseURL {
-		mpdPeriodBaseURL.WithLabelValues(mpdAlias, period.ID, baseURL).Set(1) // Assuming base URL is always set
-	}
-
-	for _, adaptationSet := range period.AdaptationSets {
-		collectAdaptationSetMetrics(adaptationSet, mpdAlias, period.ID)
-	}
-}
-
-func collectAdaptationSetMetrics(adaptationSet *mpd.AdaptationSet, mpdAlias, periodID string) {
-	if adaptationSet.MimeType == nil {
-		mpdAdaptationSetMimeType.WithLabelValues(mpdAlias, periodID, "unknown").Set(1)
-	} else {
-		mpdAdaptationSetMimeType.WithLabelValues(mpdAlias, periodID, *adaptationSet.MimeType).Set(1)
-	}
-
 }
