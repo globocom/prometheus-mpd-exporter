@@ -63,5 +63,6 @@ func initFlags() {
 	pflag.Parse()
 
 	viper.BindPFlags(pflag.CommandLine)
+	viper.SetDefault("bitrate-metrics", true)
 	viper.AutomaticEnv()
 }
